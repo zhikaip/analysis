@@ -205,6 +205,7 @@ def Exercise_A_1_3 : Decidable (∀ (X Y: Prop), (X → Y) → (¬X → ¬ Y) �
 /-- Exercise A.1.4. -/
 def Exercise_A_1_4 : Decidable (∀ (X Y: Prop), (X → Y) → (¬Y → ¬ X) → (X ↔ Y)) := by
   -- the first line of this construction should be either `apply isTrue` or `apply isFalse`.
+  apply isFalse
   sorry
 
 /-- Exercise A.1.5. -/
