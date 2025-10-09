@@ -294,7 +294,7 @@ theorem IntDecimal.Int_bij : Function.Bijective IntDecimal.toInt := by
   simp [toInt, hp]
 
 abbrev PosintDecimal.digit (p:PosintDecimal) (i:ℕ) : Digit :=
-  if h: i < p.digits.length then p.digits[i] else 0
+  if h: i < p.digits.length then p.digits[p.digits.length - i - 1] else 0
 
 abbrev PosintDecimal.carry (p q:PosintDecimal) : ℕ → ℕ := Nat.rec 0 (fun i ε ↦ if ((p.digit i:ℕ) + (q.digit i:ℕ) + ε) < 10 then 0 else 1)
 
@@ -310,10 +310,521 @@ abbrev PosintDecimal.sum_digit (p q:PosintDecimal) (i:ℕ) : ℕ :=
     p.digit i + q.digit i + (p.carry q) i - 10
 
 /-- Exercise B.1.1 -/
+
+lemma PosintDecimal.digit_le_nine (p : PosintDecimal) (i : ℕ) : (p.digit i : ℕ) ≤ 9 :=
+  Nat.le_of_lt_succ (Digit.lt (p.digit i))
+
+lemma PosintDecimal.carry_le_one (p q : PosintDecimal) (i : ℕ) : p.carry q i ≤ 1 := by
+  induction' i with k ih
+  · simp
+  · rw [carry_succ]
+    split_ifs <;> simp
+
 theorem PosintDecimal.sum_digit_lt (p q:PosintDecimal) (i:ℕ) :
-  p.sum_digit q i < 10 := by sorry
+    p.sum_digit q i < 10 := by
+  unfold sum_digit
+  split_ifs with h
+  · exact h
+  · calc
+      _ ≤ 9 + 9 + 1 - 10 := by
+        gcongr
+        · exact digit_le_nine p i
+        · exact digit_le_nine q i
+        · exact carry_le_one p q i
+      _ < 10 := by norm_num
 
-theorem PosintDecimal.sum_digit_top (p q:PosintDecimal) : ∃ l, p.sum_digit q l ≠ 0 ∧ ∀ i > l, p.sum_digit q l = 0 := by sorry
+/-- Out-of-bounds digits are `0` (for the LSB-first accessor). -/
+lemma PosintDecimal.digit_gt_len_zero (p : PosintDecimal) {i : ℕ}
+    (h : p.digits.length - 1 < i) : p.digit i = (0:ℕ) := by
+  have h : p.digits.length ≤ i := by exact Nat.le_of_pred_lt h
+  simp [PosintDecimal.digit, Nat.not_lt_of_ge h]
 
-theorem PosintDecimal.sum_eq (p q:PosintDecimal) : ∃ (r:PosintDecimal) (i:ℕ), (r.digit i:ℕ) = p.sum_digit q i ∧ (r:ℕ) = p + q := by
-  sorry
+def PosintDecimal.sum_digit_top (p q:PosintDecimal) : {l : ℕ // p.sum_digit q l ≠ 0 ∧ (∀ i > l, p.sum_digit q i = 0)} := by
+  set l := max p.digits.length q.digits.length with hl
+  by_cases h : ((p.digit (l-1):ℕ) + (q.digit (l-1):ℕ) + p.carry q (l-1) < 10)
+  · use l - 1
+    constructor
+    · unfold sum_digit
+      split_ifs
+      apply ne_of_gt
+      rw [← add_zero 0, ← add_zero (0 + 0)]
+      have hpqge : (p.digit (l - 1):ℕ) > 0 ∨ (q.digit (l - 1):ℕ) > 0 := by
+        have hmax := max_eq_iff.mp hl
+        rcases hmax with hp | hq
+        · left
+          have hple : l - 1 < p.digits.length := by
+            rw [hl, ← hp.1]
+            simp [length_pos]
+          unfold digit
+          simp [hple]
+          have hc : p.digits.length - (p.digits.length - 1) - 1 = 0 := by grind
+          conv_rhs =>
+            enter [2]
+            rw [hl, ← hp.1, hc]
+          simp [Fin.pos_iff_ne_zero, p.head_ne_zero, ← List.head_eq_getElem p.nonempty]
+        · right
+          have hqle : l - 1 < q.digits.length := by
+            rw [hl, ← hq.1]
+            simp [length_pos]
+          unfold digit
+          simp [hqle, -ne_eq]
+          have hc : q.digits.length - (q.digits.length - 1) - 1 = 0 := by grind
+          conv_rhs =>
+            enter[2]
+            rw [hl, ← hq.1, hc]
+          simp [Fin.pos_iff_ne_zero, q.head_ne_zero, ← List.head_eq_getElem q.nonempty]
+      rcases hpqge with hp | hq
+      · apply add_lt_add_of_lt_of_le
+        apply add_lt_add_of_lt_of_le
+        · exact hp
+        · simp
+        · simp
+      · apply add_lt_add_of_lt_of_le
+        apply add_lt_add_of_le_of_lt
+        · simp
+        · exact hq
+        · simp
+    · intro i hi
+      have hcarry : (p.digit i) + (q.digit i) + p.carry q i < 10 := by
+        have hp : p.digits.length - 1 < i := by
+          rw [hl] at hi
+          grind
+        have hq : q.digits.length - 1 < i := by
+          rw [hl] at hi
+          grind
+        calc
+          _ ≤ 0 + 0 + 1 := by
+            gcongr
+            · simp [digit_gt_len_zero, hp]
+            · simp [digit_gt_len_zero, hq]
+            · exact carry_le_one p q _
+          _ < 10 := by linarith
+      unfold sum_digit
+      simp [hcarry]
+      repeat' constructor
+      · grind
+      · grind
+      · induction' i using Nat.strong_induction_on with k ih
+        have hk : k ≠ 0 := by
+          have hlpos : l > 0 := by rw [hl]; simp [length_pos]
+          grind
+        rw [← Nat.sub_one_add_one hk, carry_succ]
+        simp
+        by_cases hkl : k - 1 = l - 1
+        · rw [hkl]
+          exact h
+        · have hkl : l < k := by grind
+          rw [hl, max_lt_iff] at hkl
+          calc
+            _ ≤ 0 + 0 + 1 := by
+              gcongr
+              · grind
+              · grind
+              · exact carry_le_one p q _
+            _ < 10 := by linarith
+  · use l
+    have hpl : p.digits.length - 1 < l := by rw [hl]; simp [length_pos]
+    have hql : q.digits.length - 1 < l := by rw [hl]; simp [length_pos]
+    have hll : l ≠ 0 := by rw [hl]; simp [ne_of_gt, length_pos]
+    have hsum_l : (p.digit l) + (q.digit l) + p.carry q l = 1 := by
+      rw [← zero_add 1, ← zero_add 0]
+      congr
+      · simp [digit_gt_len_zero, hpl]
+      · simp [digit_gt_len_zero, hql]
+      · rw [← Nat.sub_one_add_one hll, carry_succ]
+        simp [h]
+    constructor
+    · unfold sum_digit
+      simp [hsum_l]
+    · intro i hi
+      have hsum : (p.digit i) + (q.digit i) + p.carry q i = 0 := by
+        rw [← zero_add 0, ← add_zero (0 + 0)]
+        congr
+        · grind
+        · grind
+        · have hi0 : i ≠ 0 := by grind
+          rw [← Nat.sub_one_add_one hi0, carry_succ]
+          simp
+          by_cases hki : i - 1 = l
+          · grind
+          · have hi : i - 1 > l := by grind
+            have hpl : p.digits.length - 1 < i - 1 := by grind
+            have hql : q.digits.length - 1 < i - 1 := by grind
+            calc
+              _ ≤ 0 + 0 + 1 := by
+                gcongr
+                · grind
+                · grind
+                · exact carry_le_one p q _
+              _ < 10 := by simp
+      unfold sum_digit
+      simp [hsum]
+
+def PosintDecimal.longAddition (p q : PosintDecimal) : PosintDecimal where
+  digits := (List.range ((p.sum_digit_top q).val + 1)).reverse.map fun i => Digit.mk (p.sum_digit_lt q i)
+  nonempty := by simp
+  nonzero := by simp [(p.sum_digit_top q).prop.1]
+
+theorem nat_tel {M : Type*} [AddCommGroup M] (f : ℕ → M) (n : ℕ) :
+  ∑ i ∈ Finset.range n, (f (i + 1) - f i) = f n - f 0 := by
+    induction n with
+    | zero => simp
+    | succ n ih =>
+      have : Finset.range (n + 1) = insert n (Finset.range n) := by simp [Finset.range_succ]
+      rw [this, Finset.sum_insert (by simp)]
+      rw [ih]
+      abel
+
+set_option maxHeartbeats 500000
+theorem PosintDecimal.sum_eq (p q:PosintDecimal) (i:ℕ) :
+    (((p.longAddition q).digit i):ℕ) = p.sum_digit q i ∧ (p.longAddition q:ℕ) = p + q := by
+  constructor
+  · unfold longAddition
+    simp [digit]
+    split_ifs
+    · have hi : (↑(p.sum_digit_top q).val - (↑(p.sum_digit_top q).val + 1 - i - 1)) = i := by
+        grind
+      simp [hi]
+    · grind
+  · have h_len : (List.map (fun i => Digit.mk (p.sum_digit_lt q i))
+        (List.range ((p.sum_digit_top q).val + 1)).reverse).length
+        = (p.sum_digit_top q).val + 1 := by simp
+    have h_toNat : (p.longAddition q : ℕ) =
+        ∑ (x : Fin ((p.sum_digit_top q).val + 1)),
+        p.sum_digit q (↑(p.sum_digit_top q) - (↑(p.sum_digit_top q) - ↑x)) * 10 ^ (x:ℕ) := by
+      simp [toNat, -ite_mul, longAddition]
+      apply Finset.sum_bijective (fun (x : Fin (List.map (fun i => Digit.mk (p.sum_digit_lt q i))
+          (List.range ((p.sum_digit_top q).val + 1)).reverse).length) =>
+          (Fin.cast h_len x : Fin ((p.sum_digit_top q).val + 1)))
+      · constructor
+        -- injective
+        · intro a b h
+          have hnat := congrArg (fun (z : Fin ((p.sum_digit_top q).val + 1)) => (z : ℕ)) h
+          exact (Fin.eq_of_val_eq hnat)
+        -- surjective
+        · intro y
+          use (Fin.cast h_len.symm y)
+          simp
+      · grind
+      · simp
+    have sum_eq : (p.longAddition q : ℕ) =
+        ∑ (x : Fin ((p.sum_digit_top q).val + 1)), (p.sum_digit q (x : ℕ)) * 10 ^ (x : ℕ) := by
+        rw [h_toNat]
+        apply Finset.sum_congr rfl
+        intro x hx
+        have hsub (x : (Fin (↑(p.sum_digit_top q).val + 1))) :
+            ↑(p.sum_digit_top q).val - (↑(p.sum_digit_top q).val - x) = (x : ℕ) := by
+          grind
+        simp [hsub]
+    have hp_le : p.digits.length ≤ (p.sum_digit_top q).val + 1 := by
+      simp [sum_digit_top]
+      split_ifs
+      · have : max p.digits.length q.digits.length ≠ 0 := by
+          simp [ne_of_gt, length_pos]
+        simp [Nat.sub_one_add_one, this]
+      · apply le_trans (le_max_left _ _) (Nat.le_add_right _ 1)
+    have hq_le : q.digits.length ≤ (p.sum_digit_top q).val + 1 := by
+      simp [sum_digit_top]
+      split_ifs
+      · have : max p.digits.length q.digits.length ≠ 0 := by
+          simp [ne_of_gt, length_pos]
+        simp [Nat.sub_one_add_one, this]
+      · apply le_trans (le_max_right _ _) (Nat.le_add_right _ 1)
+    have Fin.sum_extend_by_zero {n r : ℕ} (h : n ≤ r) (f : Fin n → ℕ) :
+      (∑ i : Fin n, f i * 10 ^ (i : ℕ)) =
+      (∑ i : Fin r, (if hi : (i : ℕ) < n then f ⟨i, hi⟩ else 0) * 10 ^ (i : ℕ)) := by
+      let S : Finset (Fin r) := Finset.filter (fun i => (i : ℕ) < n) (Finset.univ : Finset (Fin r))
+      let g := fun i => (if hi : (i : ℕ) < n then f ⟨i, hi⟩ else 0) * 10 ^ (i : ℕ)
+      let univ_fin : Finset (Fin r) := (Finset.univ : Finset (Fin r))
+      have Hdecomp : univ_fin = S ∪ univ_fin \ S := by grind
+      have disj : Disjoint S (univ_fin \ S) := by
+        intro x
+        simp [S]
+        grind
+      have Hsplit : (∑ i : Fin r, g i) = (∑ i ∈ S, g i) + (∑ i ∈ univ_fin \ S, g i) := by
+        calc
+          (∑ i : Fin r, g i) = (∑ i ∈ univ_fin, g i) := by grind
+          _ = (∑ i ∈ S ∪ univ_fin \ S, g i) := by rw [Hdecomp]; grind
+          _ = (∑ i ∈ S, g i) + (∑ i ∈ univ_fin \ S, g i) := by apply Finset.sum_union disj
+      have comp_zero : (∑ i ∈ univ_fin \ S, g i) = 0 := by
+        apply Finset.sum_eq_zero
+        intro i hi
+        simp [S] at hi
+        grind
+      rw [Hsplit, comp_zero]
+      simp [g]
+      let φ : Fin n → Fin r := fun x => ⟨(x : ℕ), Nat.lt_of_lt_of_le x.2 h⟩
+      have image_eq : Finset.image φ (Finset.univ : Finset (Fin n)) = S := by
+        ext y
+        simp [S, Finset.mem_image, Finset.mem_filter, Finset.mem_univ]
+        constructor
+        · rintro ⟨x, _, rfl⟩
+          grind
+        · intro hy
+          use ⟨y.val, hy⟩
+      have sum_image_eq : (∑ x ∈ Finset.image φ (Finset.univ : Finset (Fin n)),
+            (if h : (x : ℕ) < n then f ⟨(x : ℕ), h⟩ * 10 ^ (x : ℕ) else 0)) =
+          (∑ i : Fin n, f i * 10 ^ (i : ℕ)) := by
+        -- reindex: every element of `Finset.image φ univ` is φ a for some a : Fin n,
+        -- and the `if` collapses because φ a has proof of `< n`.
+        rw [Finset.sum_image]
+        · simp [φ]
+        -- show φ is injective on `Finset.univ` (actually globally injective)
+        · intro a b c d heq
+          simp [φ] at heq
+          exact Fin.eq_of_val_eq (congrArg (fun z => (z : ℕ)) heq)
+      -- now rewrite using the equality above
+      rw [← sum_image_eq]
+      rw [image_eq]
+    -- reindex p.toNat and q.toNat to the common length (p.sum_digit_top q).val + 1
+    have Hp_reindex_p :
+        (∑ i : Fin p.digits.length, (p.digit i).toNat * 10 ^ (i : ℕ)) =
+        (∑ i : Fin ((p.sum_digit_top q).val + 1),
+        (if hi : (i : ℕ) < p.digits.length then (p.digit i).toNat else 0) * 10 ^ (i : ℕ)) :=
+      Fin.sum_extend_by_zero (hp_le) (fun i => (p.digit i).toNat)
+    have Hq_reindex_q :
+        (∑ (i : Fin q.digits.length), (q.digit i).toNat * 10 ^ (i : ℕ)) =
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+        (if hi : (i : ℕ) < q.digits.length then (q.digit i).toNat else 0) * 10 ^ (i : ℕ)) :=
+      Fin.sum_extend_by_zero (hq_le) (fun i => (q.digit i).toNat)
+
+    -- helper: carry_relation between digit+carry and sum_digit + 10*carry_{i+1}
+    have carry_relation : ∀ i,
+      ((p.digit i:ℕ) + (q.digit i:ℕ) + (p.carry q) i) =
+      (p.sum_digit q i) + 10 * (p.carry q (i+1)) := by
+      intro i
+      simp [PosintDecimal.sum_digit]
+      split_ifs with h
+      · -- no carry out
+        have : p.carry q (i+1) = 0 := by grind
+        simp
+      · -- carry out = 1
+        have : p.carry q (i+1) = 1 := by grind
+        grind
+
+    -- sum the carry_relation over the common index set
+    have sum_carry_rel :
+      (∑ (i : Fin ((p.sum_digit_top q).val + 1)), ((p.digit i:ℕ) + (q.digit i:ℕ) + (p.carry q) i) * 10 ^ (i : ℕ)) =
+      (∑ (i : Fin ((p.sum_digit_top q).val + 1)), (p.sum_digit q i) * 10 ^ (i : ℕ))
+      + (∑ (i : Fin ((p.sum_digit_top q).val + 1)), (p.carry q (i+1)) * 10 ^ ((i + 1):ℕ)) := by
+      rw [← Finset.sum_add_distrib]
+      apply Finset.sum_congr rfl
+      intro i _
+      have rel := carry_relation (i : ℕ)
+      calc
+        ((p.digit i:ℕ) + (q.digit i:ℕ) + (p.carry q) i) * 10 ^ (i : ℕ)
+          = (p.sum_digit q (i : ℕ) + 10 * (p.carry q (i+1))) * 10 ^ (i : ℕ) := by congr
+        _ = (p.sum_digit q (i : ℕ)) * 10 ^ (i : ℕ) + (p.carry q (i+1)) * 10 ^ ((i + 1):ℕ) := by
+          ring
+
+    have sum_pointwise :
+      p.toNat + q.toNat =
+        ∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+          (p.sum_digit q (i : ℕ)) * 10 ^ (i : ℕ) := by
+
+      -- 2. Expand left side into three separate sums
+      have raw_expand :
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+            ((p.digit i : ℕ) + (q.digit i : ℕ) + (p.carry q) i) * 10 ^ (i : ℕ))
+          =
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+            (p.digit i : ℕ) * 10 ^ (i : ℕ))
+          +
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+            (q.digit i : ℕ) * 10 ^ (i : ℕ))
+          +
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+            (p.carry q i) * 10 ^ (i : ℕ)) := by
+        simp [← Finset.sum_add_distrib, add_mul]
+
+      -- Replace p-digit sum by its extended form directly, staying on Fin N
+      have p_sum_eq :
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)), (p.digit i : ℕ) * 10 ^ (i : ℕ)) =
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+          (if hi : (i : ℕ) < p.digits.length then (p.digit i : ℕ) else 0) * 10 ^ (i : ℕ)) := by
+        apply Finset.sum_congr rfl
+        intro i _
+        -- unfold the definition of `PosintDecimal.digit`, which is an `if` on the bound
+        dsimp [PosintDecimal.digit]
+        split_ifs
+        · rfl
+        · rfl
+
+      -- Replace p-digit sum by its extended form directly, staying on Fin N
+      have q_sum_eq :
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)), (q.digit i : ℕ) * 10 ^ (i : ℕ)) =
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+          (if hi : (i : ℕ) < q.digits.length then (q.digit i : ℕ) else 0) * 10 ^ (i : ℕ)) := by
+        apply Finset.sum_congr rfl
+        intro i _
+        -- unfold the definition of `PosintDecimal.digit`, which is an `if` on the bound
+        dsimp [PosintDecimal.digit]
+        split_ifs
+        · rfl
+        · rfl
+
+
+      rw [raw_expand] at sum_carry_rel
+
+      rw [p_sum_eq, q_sum_eq] at sum_carry_rel
+
+      have psum : p.toNat = ∑ (i : Fin p.digits.length),
+          (p.digit i:ℕ) * 10 ^ (i: ℕ) := by
+        simp [toNat, digit]
+        grind
+
+      have qsum : q.toNat = ∑ (i : Fin q.digits.length),
+          (q.digit i:ℕ) * 10 ^ (i: ℕ) := by
+        simp [toNat, digit]
+        grind
+
+      have carry_at_top_succ_zero :
+        p.carry q ((p.sum_digit_top q).val + 1) = 0 := by
+        -- evaluate carry at (top+1) using carry_succ
+        have : p.carry q ((p.sum_digit_top q).val + 1) =
+                if ((p.digit (p.sum_digit_top q).val : ℕ) + (q.digit (p.sum_digit_top q).val : ℕ) + p.carry q (p.sum_digit_top q).val) < 10
+                then 0 else 1 := by
+          simp
+        rw [this]
+        -- By definition of sum_digit_top we know the sum_digit at `l = (p.sum_digit_top q).val` is < 10,
+        -- and by definition of `sum_digit` that exactly matches the `< 10` test above, hence carry is 0.
+        have Hl_lt : p.sum_digit q (p.sum_digit_top q).val < 10 := PosintDecimal.sum_digit_lt p q (p.sum_digit_top q).val
+        -- Unfold `sum_digit` to connect it with the test: in the `<10` branch `sum_digit = sum`,
+        -- so the boolean test must be true; if the boolean were false we get a contradiction with `Hl_lt`.
+        dsimp [PosintDecimal.sum_digit]
+        -- do a `by_cases` on the same test; the false-case contradicts `Hl_lt`
+        by_cases h : (p.digit (p.sum_digit_top q).val + q.digit (p.sum_digit_top q).val + p.carry q (p.sum_digit_top q).val : ℕ) < 10
+        · simp [h]
+        · have Hcarry1 : p.carry q ((p.sum_digit_top q).val + 1) = 1 := by
+            simp [h]
+          have : p.sum_digit q ((p.sum_digit_top q).val + 1) ≥ 1 := by
+            simp [sum_digit]
+            split_ifs
+            · simp [Hcarry1]
+            · grind
+          simp [h]
+          grind
+
+      have carry_zero : p.carry q 0 = 0 := by simp
+
+      have h_sum1_cast :
+          (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), (p.carry q (x + 1) : Int) * 10 ^ (x + 1)) =
+          ↑(∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), p.carry q (x + 1) * 10 ^ (x + 1)) := by
+          simp
+
+      have h_sum2_cast :
+        (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), (p.carry q x : Int) * 10 ^ (x : ℕ)) =
+        ↑(∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), p.carry q x * 10 ^ (x : ℕ)) := by
+        simp
+
+      have h_rhs1_cast :
+        (p.carry q ((p.sum_digit_top q).val + 1) : Int) * 10 ^ ((p.sum_digit_top q).val + 1) =
+        ↑(p.carry q ((p.sum_digit_top q).val + 1) * 10 ^ ((p.sum_digit_top q).val + 1)) := by
+        simp
+
+      have h_rhs2_cast :
+        (p.carry q 0 : Int) * 10 ^ 0 = (p.carry q 0 * 10 ^ 0) := by
+        simp
+
+      have h_nat_tel := nat_tel (fun k => (p.carry q k : Int) * 10 ^ (k : ℕ)) ((p.sum_digit_top q).val + 1)
+
+      rw [Finset.sum_sub_distrib] at h_nat_tel
+
+      rw [h_sum1_cast, h_sum2_cast, h_rhs1_cast, h_rhs2_cast] at h_nat_tel
+
+      rw [sub_eq_iff_eq_add] at h_nat_tel
+
+      have h_nat_add :
+          (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), p.carry q (x + 1) * 10 ^ (x + 1)) +
+            (p.carry q 0 * 10 ^ 0) =
+          (p.carry q ((p.sum_digit_top q).val + 1) * 10 ^ ((p.sum_digit_top q).val + 1)) +
+            (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), p.carry q x * 10 ^ (x : ℕ)) :=
+        Int.ofNat_injective h_nat_tel
+
+      have h_nat_sub :
+          (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), p.carry q (x + 1) * 10 ^ (x + 1)) -
+            (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), p.carry q x * 10 ^ (x : ℕ)) =
+          (p.carry q ((p.sum_digit_top q).val + 1) * 10 ^ ((p.sum_digit_top q).val + 1)) -
+            (p.carry q 0 * 10 ^ 0) := by
+        apply congrArg (fun t => t - (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1),
+          p.carry q x * 10 ^ (x : ℕ))) at h_nat_add
+        simp [-ite_mul] at h_nat_add
+        exact h_nat_add
+
+      have image_eq : Finset.image (fun (i : Fin ((p.sum_digit_top q).val + 1)) => (i : ℕ)) (Finset.univ : Finset (Fin ((p.sum_digit_top q).val + 1))) =
+                  Finset.range ((p.sum_digit_top q).val + 1) := by
+        ext n
+        simp [Finset.mem_image, Finset.mem_univ, Finset.mem_range]
+        constructor
+        · rintro ⟨i, _, rfl⟩
+          exact i.isLt
+        · intro hn
+          use ⟨n, hn⟩
+
+
+      have h_f_reindex :
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+          (p.carry q (i + 1)) * 10 ^ ((i + 1) : ℕ)) =
+        (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1),
+          (p.carry q (x + 1)) * 10 ^ (x + 1)) := by
+        have H := Finset.sum_image
+          (f := fun (n : ℕ) => (p.carry q (n + 1)) * 10 ^ (n + 1))
+          (s := (Finset.univ : Finset (Fin ((p.sum_digit_top q).val + 1))))
+          (g := fun (i : Fin ((p.sum_digit_top q).val + 1)) => (i : ℕ))
+          (by intro a b _ _ h; simp at h; exact Fin.eq_of_val_eq h)
+        rw [image_eq] at H
+        exact Eq.symm H
+
+      have h_g_reindex :
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+          (p.carry q i) * 10 ^ (i : ℕ)) =
+        (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1),
+          (p.carry q x) * 10 ^ x) := by
+        have H := Finset.sum_image
+          (f := fun (n : ℕ) => (p.carry q n) * 10 ^ (n : ℕ))
+          (s := (Finset.univ : Finset (Fin ((p.sum_digit_top q).val + 1))))
+          (g := fun (i : Fin ((p.sum_digit_top q).val + 1)) => (i : ℕ))
+          (by intro a b _ _ h; simp at h; exact Fin.eq_of_val_eq h)
+        rw [image_eq] at H
+        exact Eq.symm H
+
+      have tel :
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+          (p.carry q (i + 1)) * 10 ^ ((i + 1) : ℕ)) -
+        (∑ (i : Fin ((p.sum_digit_top q).val + 1)), (p.carry q i) * 10 ^ (i : ℕ)) =
+        (p.carry q ((p.sum_digit_top q).val + 1)) * 10 ^ ((p.sum_digit_top q).val + 1) -
+        (p.carry q 0) * 10 ^ 0 := by
+
+        rw [← h_f_reindex, ← h_g_reindex] at h_nat_sub
+        exact h_nat_sub
+
+
+      have eq_after_sub :
+        (p:ℕ) + ↑q =
+          (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+              p.sum_digit q ↑i * 10 ^ (i:ℕ))
+          +
+          ((∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+              p.carry q (↑i + 1) * 10 ^ ((i + 1):ℕ))
+          -
+          (∑ (i : Fin ((p.sum_digit_top q).val + 1)),
+              p.carry q ↑i * 10 ^ (i:ℕ ))) := by
+        rw [← Hp_reindex_p, ← Hq_reindex_q] at sum_carry_rel
+        rw [← psum, ← qsum] at sum_carry_rel
+        have sum_carry_rel' := by
+          apply congrArg (fun t => t - (∑ i : Fin ((p.sum_digit_top q).val + 1), p.carry q i * 10 ^ (i : ℕ))) at sum_carry_rel
+          simp [-ite_mul] at sum_carry_rel
+          exact sum_carry_rel
+        rw [add_tsub_assoc_of_le] at sum_carry_rel'
+        grind
+        · apply le_of_eq
+          calc
+            (∑ i : Fin ((p.sum_digit_top q).val + 1), (p.carry q i) * 10 ^ (i : ℕ))
+              = (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1), (p.carry q x) * 10 ^ x) := by grind
+            _ = (∑ x ∈ Finset.range ((p.sum_digit_top q).val + 1),
+                (p.carry q (x + 1)) * 10 ^ (x + 1)) := by grind
+            _ = (∑ i : Fin ((p.sum_digit_top q).val + 1),
+                (p.carry q (i + 1)) * 10 ^ ((i + 1) : ℕ)) := by grind
+            _ = _ := by rfl
+      grind
+    rw [sum_eq, sum_pointwise]

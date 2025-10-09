@@ -97,20 +97,48 @@ example : ¬ ∃ m:ℤ, ∀ n:ℤ, m > n := by
 /-- Exercise A.5.1 -/
 def Exercise_A_5_1a : Decidable (∀ x > (0:ℝ), ∀ y > (0:ℝ), y^2 = x ) := by
   -- the first line of this construction should be either `apply isTrue` or `apply isFalse`.
-  sorry
+  apply isFalse
+  push_neg
+  use 1; simp
+  use 2; simp
+  norm_num
 
 def Exercise_A_5_1b : Decidable (∃ x > (0:ℝ), ∀ y > (0:ℝ), y^2 = x ) := by
   -- the first line of this construction should be either `apply isTrue` or `apply isFalse`.
-  sorry
+  apply isFalse
+  push_neg
+  intro x h
+  by_cases h' : x = 1
+  · use 2; simp
+    norm_num [h']
+  · use 1; simp
+    push_neg at *
+    symm
+    exact h'
 
 def Exercise_A_5_1c : Decidable (∃ x > (0:ℝ), ∃ y > (0:ℝ), y^2 = x ) := by
   -- the first line of this construction should be either `apply isTrue` or `apply isFalse`.
-  sorry
+  apply isTrue
+  use 1; simp
+  use 1; simp
 
 def Exercise_A_5_1d : Decidable (∀ y > (0:ℝ), ∃ x > (0:ℝ), y^2 = x ) := by
   -- the first line of this construction should be either `apply isTrue` or `apply isFalse`.
-  sorry
+  apply isTrue
+  intro y h
+  use y ^ 2
+  simp [sq_pos_of_pos h]
 
 def Exercise_A_5_1e : Decidable (∃ y > (0:ℝ), ∀ x > (0:ℝ), y^2 = x ) := by
   -- the first line of this construction should be either `apply isTrue` or `apply isFalse`.
-  sorry
+  apply isFalse
+  push_neg
+  intro y h
+  by_cases h' : y = 1
+  · use 2; simp
+    norm_num [h']
+  · use 1; simp
+    push_neg at *
+    constructor
+    · exact h'
+    · linarith
