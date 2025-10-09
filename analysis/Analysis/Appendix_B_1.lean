@@ -313,6 +313,7 @@ abbrev PosintDecimal.sum_digit (p q:PosintDecimal) (i:ℕ) : ℕ :=
 theorem PosintDecimal.sum_digit_lt (p q:PosintDecimal) (i:ℕ) :
   p.sum_digit q i < 10 := by sorry
 
+/-- Define this number such that it satisfies the two following theorems. -/
 def PosintDecimal.sum_digit_top (p q:PosintDecimal) : ℕ := by sorry
 
 theorem PosintDecimal.leading_nonzero (p q:PosintDecimal) :
